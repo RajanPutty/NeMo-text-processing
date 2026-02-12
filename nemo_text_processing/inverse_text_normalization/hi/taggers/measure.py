@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import string
+
 import pynini
 from pynini.lib import pynutil
 
@@ -28,16 +30,6 @@ from nemo_text_processing.inverse_text_normalization.hi.utils import get_abs_pat
 
 
 class MeasureFst(GraphFst):
-    """
-    Finite state transducer for classifying measure
-        e.g. ऋण बारह किलोग्राम -> measure { decimal { negative: "true"  integer_part: "१२"  fractional_part: "५०"} units: "kg" }
-        e.g. ऋण बारह किलोग्राम -> measure { cardinal { negative: "true"  integer_part: "१२"} units: "kg" }
-        e.g. सात शून्य शून्य ओक स्ट्रीट -> measure { units: "address" cardinal { integer: "७०० ओक स्ट्रीट" } preserve_order: true }
-
-    Args:
-        cardinal: CardinalFst
-        decimal: DecimalFst
-    """
 
     def __init__(self, cardinal: GraphFst, decimal: GraphFst):
         super().__init__(name="measure", kind="classify")
@@ -147,7 +139,6 @@ class MeasureFst(GraphFst):
             + pynini.closure(delete_extra_space + self.measurements)
         )
 
-        # Shared digit word -> Devanagari digit mapping
         num_word = (
             pynini.string_file(get_abs_path("data/numbers/digit.tsv"))
             | pynini.string_file(get_abs_path("data/numbers/zero.tsv"))
@@ -157,21 +148,16 @@ class MeasureFst(GraphFst):
 
         delete_one_space = pynutil.delete(" ")
 
-        # Structured address: state/city + pincode
         states = pynini.string_file(get_abs_path("data/address/states.tsv"))
         cities = pynini.string_file(get_abs_path("data/address/cities.tsv"))
         state_city_names = pynini.union(states, cities).optimize()
-
         pincode = num_word + pynini.closure(delete_one_space + num_word, 5, 5)
 
         structured_pattern = (
             state_city_names
-            + pynini.closure(
-                pynini.accep(",") + pynini.accep(" ") + state_city_names, 0, 1
-            )
+            + pynini.closure(pynini.accep(",") + pynini.accep(" ") + state_city_names, 0, 1)
             + pynini.accep(" ") + pincode
         ).optimize()
-
         structured_address_graph = (
             pynutil.insert('units: "address" cardinal { integer: "')
             + convert_space(structured_pattern)
@@ -179,17 +165,24 @@ class MeasureFst(GraphFst):
         )
         structured_address_graph = pynutil.add_weight(structured_address_graph, 1.0).optimize()
 
-        # Address: digit/special/ordinal conversion with context keywords
-        special_word = pynini.string_file(get_abs_path("data/address/special_characters.tsv"))
+        special_word = pynini.string_file(get_abs_path("data/address/address_separators.tsv"))
         ordinal_word = pynini.string_file(get_abs_path("data/address/ordinals.tsv"))
-        context_keywords_fsa = pynini.string_file(get_abs_path("data/address/context.tsv"))
+        context_keywords_fsa = pynini.string_file(get_abs_path("data/address/context_cues.tsv"))
+        letter_map = pynini.string_file(get_abs_path("data/address/letters.tsv"))
+        compound_phrases = pynini.string_file(get_abs_path("data/address/compound_phrases.tsv"))
+        split_kw = pynini.string_file(get_abs_path("data/address/split_keywords.tsv"))
+
+        digit_suffix_filter = pynini.union(pynini.accep("ए"), pynini.accep("एल"))
+        digit_suffix_letter = pynini.compose(digit_suffix_filter, letter_map).optimize()
+
+        hyphen_entries = pynini.compose(special_word, pynini.accep("-"))
+        spaced_sep = pynini.compose(hyphen_entries, pynini.cross("-", " - ")).optimize()
 
         digit_passthrough = pynini.string_map([
             ("۰", "۰"), ("۱", "۱"), ("۲", "۲"), ("۳", "۳"), ("۴", "۴"),
             ("۵", "۵"), ("۶", "۶"), ("۷", "۷"), ("۸", "۸"), ("۹", "۹"),
         ]).optimize()
         digit_unit = pynini.union(num_word, digit_passthrough).optimize()
-
         all_digit_inputs = pynini.project(digit_unit, "input").optimize()
         all_ordinal_inputs = pynini.project(ordinal_word, "input").optimize()
 
@@ -197,7 +190,6 @@ class MeasureFst(GraphFst):
             NEMO_CHAR, pynini.union(NEMO_WHITE_SPACE, pynini.accep(","))
         ).optimize()
         any_word = pynini.closure(non_space_non_comma, 1).optimize()
-
         text_word = pynini.difference(
             any_word, pynini.union(all_digit_inputs, all_ordinal_inputs)
         ).optimize()
@@ -205,30 +197,56 @@ class MeasureFst(GraphFst):
         digit_block = digit_unit + pynini.closure(
             pynutil.add_weight(delete_one_space + digit_unit, -1.0)
         )
-
         connector = delete_one_space + special_word + delete_one_space
 
-        matchable = pynini.union(
+        latin_to_upper = pynini.compose(
+            pynini.union(*[pynini.accep(c) for c in string.ascii_lowercase]),
+            letter_map,
+        ).optimize()
+        latin_then_digit = latin_to_upper + delete_one_space + digit_block
+
+        digit_2 = digit_unit + delete_one_space + digit_unit
+        digit2_then_letter = digit_2 + delete_one_space + digit_suffix_letter
+
+        bldg = digit_unit + pynini.closure(
+            pynutil.add_weight(delete_one_space + digit_unit, -2.0), 2, 3)
+        stnum = digit_unit + pynini.closure(
+            pynutil.add_weight(delete_one_space + digit_unit, -0.5), 0, 1)
+        split_digit_kw = bldg + pynini.accep(" ") + stnum + pynini.accep(" ") + split_kw
+
+        long_db = (
+            digit_unit
+            + pynutil.add_weight(delete_one_space + digit_unit, -1.0)
+            + pynutil.add_weight(delete_one_space + digit_unit, -1.0)
+            + pynini.closure(pynutil.add_weight(delete_one_space + digit_unit, -1.0))
+        )
+        basic_matchable = pynini.union(
             pynutil.add_weight(digit_block, -0.1),
             pynutil.add_weight(ordinal_word, -0.2),
             pynutil.add_weight(text_word, 0.1),
+        ).optimize()
+        spaced_hyphen = long_db + delete_one_space + spaced_sep + delete_one_space + basic_matchable
+
+        matchable = pynini.union(
+            pynutil.add_weight(split_digit_kw, -5.0),
+            pynutil.add_weight(spaced_hyphen, -4.0),
+            pynutil.add_weight(latin_then_digit, -3.5),
+            pynutil.add_weight(compound_phrases, -3.0),
+            pynutil.add_weight(digit2_then_letter, -1.5),
+            basic_matchable,
         ).optimize()
 
         chain = matchable + pynini.closure(
             pynutil.add_weight(connector + matchable, -0.5)
         )
-
         opt_comma = pynini.closure(pynini.accep(","), 0, 1)
         element = chain + opt_comma
         address_content = element + pynini.closure(pynini.accep(" ") + element)
 
-        # Context detection: keyword must appear as a complete word in the input
         any_char = pynini.union(
-            pynini.difference(NEMO_CHAR, NEMO_WHITE_SPACE),
-            NEMO_WHITE_SPACE,
+            pynini.difference(NEMO_CHAR, NEMO_WHITE_SPACE), NEMO_WHITE_SPACE
         ).optimize()
         sigma_star = pynini.closure(any_char).optimize()
-
         word_sep = pynini.union(pynini.accep(" "), pynini.accep(",")).optimize()
 
         input_pattern = pynini.union(
@@ -239,7 +257,6 @@ class MeasureFst(GraphFst):
         ).optimize()
 
         address_graph = pynini.compose(input_pattern, address_content).optimize()
-
         address_graph = (
             pynutil.insert('units: "address" cardinal { integer: "')
             + convert_space(address_graph)
@@ -255,6 +272,5 @@ class MeasureFst(GraphFst):
             | structured_address_graph
         )
         self.graph = graph.optimize()
-
         final_graph = self.add_tokens(graph)
         self.fst = final_graph
