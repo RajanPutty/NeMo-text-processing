@@ -83,7 +83,7 @@ class MeasureFst(GraphFst):
             1,
         )
         graph_dedh_single_digit = pynutil.add_weight(
-            pynini.union(pynutil.delete("डेढ़") | pynutil.delete("डेढ़"))
+            pynini.union(pynutil.delete("डेढ़") | pynutil.delete("डेढ़"))
             + delete_space
             + pynutil.insert("integer_part: \"१\"")
             + delete_space
@@ -151,6 +151,8 @@ class MeasureFst(GraphFst):
         num_word = (
             pynini.string_file(get_abs_path("data/numbers/digit.tsv"))
             | pynini.string_file(get_abs_path("data/numbers/zero.tsv"))
+            | pynini.string_file(get_abs_path("data/telephone/eng_digit.tsv"))
+            | pynini.string_file(get_abs_path("data/telephone/eng_zero.tsv"))
         ).invert().optimize()
 
         delete_one_space = pynutil.delete(" ")
