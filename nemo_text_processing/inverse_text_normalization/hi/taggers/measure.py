@@ -182,7 +182,7 @@ class MeasureFst(GraphFst):
         # Address: digit/special/ordinal conversion with context keywords
         special_word = pynini.string_file(get_abs_path("data/address/special_characters.tsv"))
         ordinal_word = pynini.string_file(get_abs_path("data/address/ordinals.tsv"))
-        context_keywords_fsa = pynini.string_file(get_abs_path("data/address/context.tsv"))
+        context_keywords_fsa = pynini.string_file(get_abs_path("data/address/context_cues.tsv"))
 
         digit_passthrough = pynini.string_map([
             ("۰", "۰"), ("۱", "۱"), ("۲", "۲"), ("۳", "۳"), ("۴", "۴"),
