@@ -21,6 +21,7 @@ from nemo_text_processing.inverse_text_normalization.hi.verbalizers.fraction imp
 from nemo_text_processing.inverse_text_normalization.hi.verbalizers.measure import MeasureFst
 from nemo_text_processing.inverse_text_normalization.hi.verbalizers.money import MoneyFst
 from nemo_text_processing.inverse_text_normalization.hi.verbalizers.ordinal import OrdinalFst
+from nemo_text_processing.inverse_text_normalization.hi.verbalizers.percentage import PercentageFst
 from nemo_text_processing.inverse_text_normalization.hi.verbalizers.telephone import TelephoneFst
 from nemo_text_processing.inverse_text_normalization.hi.verbalizers.time import TimeFst
 from nemo_text_processing.inverse_text_normalization.hi.verbalizers.whitelist import WhiteListFst
@@ -38,15 +39,16 @@ class VerbalizeFst(GraphFst):
         super().__init__(name="verbalize", kind="verbalize")
         cardinal = CardinalFst()
         cardinal_graph = cardinal.fst
-        ordinal_graph = OrdinalFst().fst
-        decimal = DecimalFst()
+        ordinal_graph = OrdinalFst().fst          # takes nothing
+        decimal = DecimalFst()                     # takes nothing
         decimal_graph = decimal.fst
-        fraction_graph = FractionFst().fst
-        date_graph = DateFst().fst
-        time_graph = TimeFst().fst
-        measure_graph = MeasureFst(cardinal, decimal).fst
-        money_graph = MoneyFst(cardinal, decimal).fst
-        telephone_graph = TelephoneFst(cardinal).fst
+        fraction_graph = FractionFst().fst         # takes nothing
+        percentage_graph = PercentageFst().fst     # takes nothing
+        date_graph = DateFst().fst                 # takes nothing
+        time_graph = TimeFst().fst                 # takes nothing
+        measure_graph = MeasureFst(cardinal, decimal).fst   # takes cardinal, decimal
+        money_graph = MoneyFst(cardinal, decimal).fst       # takes cardinal, decimal
+        telephone_graph = TelephoneFst(cardinal).fst        # takes cardinal
         word_graph = WordFst().fst
         whitelist_graph = WhiteListFst().fst
 
@@ -57,6 +59,7 @@ class VerbalizeFst(GraphFst):
             | ordinal_graph
             | decimal_graph
             | fraction_graph
+            | percentage_graph
             | date_graph
             | time_graph
             | measure_graph
