@@ -1,8 +1,21 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pynini
 from pynini.lib import pynutil
 
 from nemo_text_processing.inverse_text_normalization.hi.graph_utils import (
-    INPUT_LOWER_CASED,
     GraphFst,
     delete_space,
 )
@@ -10,30 +23,32 @@ from nemo_text_processing.inverse_text_normalization.hi.utils import get_abs_pat
 
 
 class PercentageFst(GraphFst):
-    def __init__(self, cardinal, input_case: str = INPUT_LOWER_CASED):
+    """
+    Finite state transducer for classifying percentages
+        e.g. बीस प्रतिशत -> percentage { integer: "२०" percent: "%" }
+
+    Args:
+        cardinal: CardinalFst
+    """
+
+    def __init__(self, cardinal):
         super().__init__(name="percentage", kind="classify")
 
-        # load percent words and flip mapping: प्रतिशत → %
-        percent_graph = pynini.string_file(
+        graph_percent_symbol = pynini.string_file(
             get_abs_path("data/percentage/percent_symbol.tsv")
         ).invert()
 
-        # reuse number logic (बीस → २०, पाँच सौ → ५००)
         integer_graph = cardinal.graph_no_exception
 
-        # match: <number> + <percent word>
-        # and convert into structured format
         final_graph = (
-            pynutil.insert('integer: "')
+            pynutil.insert("integer: \"")
             + integer_graph
-            + pynutil.insert('"')
+            + pynutil.insert("\"")
             + delete_space
-            + pynutil.insert(' percent: "')
-            + percent_graph
-            + pynutil.insert('"')
+            + pynutil.insert(" percent: \"")
+            + graph_percent_symbol
+            + pynutil.insert("\"")
         )
 
-        # wrap as: percentage { ... }
         final_graph = self.add_tokens(final_graph)
-
         self.fst = final_graph.optimize()

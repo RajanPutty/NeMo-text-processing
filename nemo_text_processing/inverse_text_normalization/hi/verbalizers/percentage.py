@@ -1,3 +1,17 @@
+# Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pynini
 from pynini.lib import pynutil
 
@@ -9,11 +23,14 @@ from nemo_text_processing.inverse_text_normalization.hi.graph_utils import (
 
 
 class PercentageFst(GraphFst):
+    """
+    Finite state transducer for verbalizing percentage
+        e.g. percentage { integer: "२०" percent: "%" } -> २०%
+    """
+
     def __init__(self):
         super().__init__(name="percentage", kind="verbalize")
 
-        # extract number part (remove labels and quotes)
-        # example: integer: "२०" → २०
         integer_part = (
             pynutil.delete("integer:")
             + delete_space
@@ -22,8 +39,6 @@ class PercentageFst(GraphFst):
             + pynutil.delete("\"")
         )
 
-        # extract percent symbol
-        # example: percent: "%" → %
         percent_part = (
             pynutil.delete("percent:")
             + delete_space
@@ -32,10 +47,7 @@ class PercentageFst(GraphFst):
             + pynutil.delete("\"")
         )
 
-        # combine both → २०%
         graph = integer_part + delete_space + percent_part
 
-        # remove outer wrapper: percentage { ... }
         delete_tokens = self.delete_tokens(graph)
-
         self.fst = delete_tokens.optimize()
